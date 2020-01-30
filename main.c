@@ -421,5 +421,5 @@ void play(){
 		beep(0,note_on[q+1].deltatime/important.s_per_t);
         //printf("kggj");
 	}
-    
+    	printf("\n**end of track**\n");
 }
