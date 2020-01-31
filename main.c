@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "sintable.h"
 #include "beep.h"
 
 //functions:
@@ -14,6 +15,8 @@ void play();
 void set_note();
 void with(int t);
 void without(int t);
+int hex2(int a,int b);
+int hex(int a);
 
 //struct:
 struct Header_Chunk{
@@ -37,26 +40,26 @@ struct important{
 
 }important;
 
-struct note_on{
+struct note{
     int deltatime;
     int channel;
 	int note;
     char realnote[3];
     float frequency;
 	char velocity;
-}note_on[2000];
-struct note_off{
+}note[10000];
+/*struct note{
     int deltatime;
     int channel;
 	int note;
 	char velocity;
-}note_off[2000];
+}note[2000];*/
 
 FILE *infile;
 
-
 int main(){                                         /*****************************************************/
     //forelise.mid
+    important.settempo=500000;
     getfilename();
     header();
     readevent();
@@ -141,20 +144,48 @@ void readevent(){
     int c0,c1,c2;
     c0=fgetc(infile);
     c1=fgetc(infile);
+    c2=fgetc(infile);
     //printf("%X",c1);
-    while (c1 != 0x90){
-        c2=fgetc(infile);
+    while (c1 < 0x90 || c1 > 0x99){        
+        if(c2 >= 0x90 && c2 <= 0x99){
+            break;
+        }
+        //printf(" %d ",c2);
         searchevent(c1,c2);
         c0=fgetc(infile);
         c1=fgetc(infile);
+        c2=fgetc(infile);
+        //printf(" %d ",c1);
     }
-    note_on[0].channel=c1;
-    note_on[0].note=fgetc(infile);
-    note_on[0].velocity=fgetc(infile);
-    note_off[0].deltatime=read_delta_time();
-    note_off[0].channel=fgetc(infile);
-    note_off[0].note=fgetc(infile);
-    note_off[0].velocity=fgetc(infile);
+    // 00 90 2D
+    // 81 67 90 2D
+    // 00 13 90 2D
+    if(c1 >= 0x90){
+        note[0].deltatime=0;
+        note[0].channel=c1;
+        note[0].note=c2;
+        note[0].velocity=fgetc(infile);
+    }
+    else if(c0 >= 0x80){
+        note[0].deltatime=hex2(c0,c1)/important.s_per_t;
+        printf("sssssssssssss%d",note[0].deltatime);
+        note[0].channel=c2;
+        note[0].note=fgetc(infile);
+        note[0].velocity=fgetc(infile);
+    }
+    else{
+        note[0].deltatime=hex(c1)/important.s_per_t;
+        note[0].channel=c2;
+        note[0].note=fgetc(infile);
+        note[0].velocity=fgetc(infile);
+    }
+    /*note[0].channel=c1;
+    note[0].note=fgetc(infile);
+    note[0].velocity=fgetc(infile);
+    note[0].deltatime=read_delta_time();
+    note[0].channel=fgetc(infile);
+    note[0].note=fgetc(infile);
+    note[0].velocity=fgetc(infile);*/
 }
 
 void searchevent(int c1,int c2){
@@ -168,7 +199,7 @@ void searchevent(int c1,int c2){
     }
     else if(c2 == 0x51){
         int length,sum;
-        important.settempo=0;
+        //important.settempo=0;
         length=fgetc(infile);
         //printf("%d",length);
         for (int i = 0; i < length ; i++)
@@ -198,16 +229,34 @@ void searchevent(int c1,int c2){
         n=fgetc(infile);
         printf("MIDI port : %d\n",fgetc(infile));
     }
-    else if(c2 == 0xB0){
+    else if(c2 == 0x03){
+        int n;
+        n=fgetc(infile);
+        printf("Track name: ");
+        for (int i = 0; i < n; i++)
+        {
+            printf("%c",fgetc(infile));
+        }
+        printf("\n");
+    }
+    else if(c1 == 0x0B){
         int x;
         x=fgetc(infile);
-        x=fgetc(infile);
+        //x=fgetc(infile);
     }
-    else if(c2 == 0xC0){
+    else if(c1 == 0xC0){
+        //int x;
+        //x=fgetc(infile);
+    }
+    else if(c1 == 0xC2){
+        //int x;
+        //x=fgetc(infile);
+    }
+    else if(c1 == 0xB0){
         int x;
         x=fgetc(infile);
     }
-    else if(c2 < 0x90 && c2 >= 0x80){
+    /*else if(c2 < 0x90 && c2 >= 0x80){
         int value;
         char delta_time;
         if (value = c2 & 0x80)
@@ -220,10 +269,12 @@ void searchevent(int c1,int c2){
             
         }
         important.time_0 = value;
-    }
+    }*/
 }
 
 void second_per_time(){
+    //printf(" %d ",important.settempo);
+    //printf("\nholyshit\n");
     double x=60000000/important.settempo;
     double y=x*mid.data.division;
     important.s_per_t=60000/y;
@@ -233,162 +284,248 @@ void second_per_time(){
 void readnote(){
     //read all notes and print them but only play notes on one channel. user choose this channel.
     int i=1;
-    int p;
+    int p,q,w,sum;
     while(1){
-        note_on[i].deltatime=read_delta_time();
-        note_on[i].channel=fgetc(infile);
-        if (note_on[i].channel == 0xFF)
+        printf("%d ",i);
+        p=fgetc(infile);
+        q=fgetc(infile);
+        if (q == 0xFF )
         {
-            //printf("d");
-            break;
+            p=fgetc(infile);
+            if(p == 0x2F){
+                printf("\nend of file\n");
+                break;
+            }
+            else if(p == 0x51){
+                printf("s00s");
+                i--;
+                w=fgetc(infile);
+                important.settempo=0;
+                sum=0;
+                for (int j = 0; j < w ; j++)
+                {  
+                    sum=fgetc(infile);
+                    for (int k = w-1; k > j; k--)
+                    {
+                        sum=sum*16*16;
+                    }
+                    important.settempo+=sum;
+                }
+            }
+            
         }
-        note_on[i].note=fgetc(infile);
-        //printf(" k%dk ",note_on[i].note);
-        note_on[i].velocity=fgetc(infile);
-        note_off[i].deltatime=read_delta_time();
-        note_off[i].channel=fgetc(infile);
-        note_off[i].note=fgetc(infile);
-        note_off[i].velocity=fgetc(infile);
+        else if(q >= 0x80){
+            if(q < 0x90){
+                note[i].deltatime=hex(p)/important.s_per_t;
+                note[i].channel=q;
+                note[i].note=fgetc(infile);
+                note[i].velocity=fgetc(infile);
+            }else
+            {
+                note[i].deltatime=hex(p)/important.s_per_t;
+                note[i].channel=q;
+                note[i].note=fgetc(infile);
+                note[i].velocity=fgetc(infile);
+            }
+        }else
+        {
+            w=fgetc(infile);
+            if (w <= 0x99)
+            {
+                note[i].deltatime=hex2(p,q)/important.s_per_t;
+                note[i].channel=w;
+                note[i].note=fgetc(infile);
+                note[i].velocity=fgetc(infile);
+            }else
+            {
+                w=fgetc(infile);
+                important.settempo=0;
+                sum=0;
+                for (int j = 0; j < w ; j++)
+                {  
+                    sum=fgetc(infile);
+                    for (int k = w-1; k > j; k--)
+                    {
+                        sum=sum*16*16;
+                    }
+                    important.settempo+=sum;
+                }
+                i--;
+            }
+            
+        }
         i++;
-        //printf("s");
+
+        
     }
     important.count=i;
     fclose(infile);
 }
 int read_delta_time(){
-    int value;
+    /*int value=0;
     char delta_time;
     if ((value = fgetc(infile)) & 0x80)
     {
         value &=0x7f;
         do
         {
-            value = (value << 7) + ((delta_time = fgetc(infile)) & 0x7f);
+            value = (value << 7) + ((delta_time = fgetc(infile)) & 0x7f); 
         } while (delta_time & 0x80);
     }
-    return value;
+    return value;*/
+    int value;
+    value = fgetc(infile) & 0x80;
+    if(value == 0){
+        
+    }
+}
+
+int hex(int a){
+    int value;
+    value = a & 0x80;
+    if(value != 0){
+        a-=value;
+    }
+    return a;
+}
+
+int hex2(int a,int b){
+    int a_temp = a & 0x01;
+    int hex_one[4];
+    if(a_temp == 0){
+        b = b & 0x80;
+    }else{
+        b = b | 0x80;
+    }
+    hex_one[0] = b & 0x0F;
+    hex_one[1] = b>>4;
+    hex_one[2] = (a >> 1) & 0x0F;
+    hex_one[3] = (a>>5) & 0x03;
+
+    return hex_one[0] + hex_one[1]*16 + hex_one[2]*256 + hex_one[3]*256*16;
+
 }
 
 void set_note(){
 	for (int q = 0; q < important.count; q++)
 	{
-		if(note_on[q].note%12 == 0 ){
-			note_on[q].realnote[0]='C';
+		if(note[q].note%12 == 0 ){
+			note[q].realnote[0]='C';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 1 ){
-			note_on[q].realnote[0]='C';
-			note_on[q].realnote[1]='s';
+		else if(note[q].note%12 == 1 ){
+			note[q].realnote[0]='C';
+			note[q].realnote[1]='s';
 			with(q);
 		}
-		else if(note_on[q].note%12 == 2 ){
-			note_on[q].realnote[0]='D';
+		else if(note[q].note%12 == 2 ){
+			note[q].realnote[0]='D';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 3 ){
-			note_on[q].realnote[0]='D';
-			note_on[q].realnote[1]='s';
+		else if(note[q].note%12 == 3 ){
+			note[q].realnote[0]='D';
+			note[q].realnote[1]='s';
 			with(q);
 		}
-		else if(note_on[q].note%12 == 4 ){
-			note_on[q].realnote[0]='E';
+		else if(note[q].note%12 == 4 ){
+			note[q].realnote[0]='E';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 5 ){
-			note_on[q].realnote[0]='F';
+		else if(note[q].note%12 == 5 ){
+			note[q].realnote[0]='F';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 6 ){
-			note_on[q].realnote[0]='F';
-			note_on[q].realnote[1]='s';
+		else if(note[q].note%12 == 6 ){
+			note[q].realnote[0]='F';
+			note[q].realnote[1]='s';
 			with(q);
 		}
-		else if(note_on[q].note%12 == 7 ){
-			note_on[q].realnote[0]='G';
+		else if(note[q].note%12 == 7 ){
+			note[q].realnote[0]='G';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 8 ){
-			note_on[q].realnote[0]='G';
-			note_on[q].realnote[1]='s';
+		else if(note[q].note%12 == 8 ){
+			note[q].realnote[0]='G';
+			note[q].realnote[1]='s';
 			with(q);
 		}
-		else if(note_on[q].note%12 == 9 ){
-			note_on[q].realnote[0]='A';
+		else if(note[q].note%12 == 9 ){
+			note[q].realnote[0]='A';
 			without(q);
 		}
-		else if(note_on[q].note%12 == 10 ){
-			note_on[q].realnote[0]='A';
-			note_on[q].realnote[1]='s';
+		else if(note[q].note%12 == 10 ){
+			note[q].realnote[0]='A';
+			note[q].realnote[1]='s';
 			with(q);
 		}
-		else if(note_on[q].note%12 == 11 ){
-			note_on[q].realnote[0]='B';
+		else if(note[q].note%12 == 11 ){
+			note[q].realnote[0]='B';
 			without(q);
 		}
 	}
 }
 void without(int t){
-	if(note_on[t].note<24){
-		note_on[t].realnote[1]='0';
+	if(note[t].note<24){
+		note[t].realnote[1]='0';
 	}
-	else if(note_on[t].note<36){
-		note_on[t].realnote[1]='1';
+	else if(note[t].note<36){
+		note[t].realnote[1]='1';
 	}
-	else if(note_on[t].note<48){
-		note_on[t].realnote[1]='2';
+	else if(note[t].note<48){
+		note[t].realnote[1]='2';
 	}
-	else if(note_on[t].note<60){
-		note_on[t].realnote[1]='3';
+	else if(note[t].note<60){
+		note[t].realnote[1]='3';
 	}
-	else if(note_on[t].note<72){
-		note_on[t].realnote[1]='4';
+	else if(note[t].note<72){
+		note[t].realnote[1]='4';
 	}
-	else if(note_on[t].note<84){
-		note_on[t].realnote[1]='5';
+	else if(note[t].note<84){
+		note[t].realnote[1]='5';
 	}
-	else if(note_on[t].note<96){
-		note_on[t].realnote[1]='6';
+	else if(note[t].note<96){
+		note[t].realnote[1]='6';
 	}
-	else if(note_on[t].note<108){
-		note_on[t].realnote[1]='7';
+	else if(note[t].note<108){
+		note[t].realnote[1]='7';
 	}
-	else if(note_on[t].note<120){
-		note_on[t].realnote[1]='8';
+	else if(note[t].note<120){
+		note[t].realnote[1]='8';
 	}
-	else if(note_on[t].note<132){
-		note_on[t].realnote[1]='9';
+	else if(note[t].note<132){
+		note[t].realnote[1]='9';
 	}
 }
 void with(int t){
-	if(note_on[t].note<24){
-		note_on[t].realnote[2]='0';
+	if(note[t].note<24){
+		note[t].realnote[2]='0';
 	}
-	else if(note_on[t].note<36){
-		note_on[t].realnote[2]='1';
+	else if(note[t].note<36){
+		note[t].realnote[2]='1';
 	}
-	else if(note_on[t].note<48){
-		note_on[t].realnote[2]='2';
+	else if(note[t].note<48){
+		note[t].realnote[2]='2';
 	}
-	else if(note_on[t].note<60){
-		note_on[t].realnote[2]='3';
+	else if(note[t].note<60){
+		note[t].realnote[2]='3';
 	}
-	else if(note_on[t].note<72){
-		note_on[t].realnote[2]='4';
+	else if(note[t].note<72){
+		note[t].realnote[2]='4';
 	}
-	else if(note_on[t].note<84){
-		note_on[t].realnote[2]='5';
+	else if(note[t].note<84){
+		note[t].realnote[2]='5';
 	}
-	else if(note_on[t].note<96){
-		note_on[t].realnote[2]='6';
+	else if(note[t].note<96){
+		note[t].realnote[2]='6';
 	}
-	else if(note_on[t].note<108){
-		note_on[t].realnote[2]='7';
+	else if(note[t].note<108){
+		note[t].realnote[2]='7';
 	}
-	else if(note_on[t].note<120){
-		note_on[t].realnote[2]='8';
+	else if(note[t].note<120){
+		note[t].realnote[2]='8';
 	}
-	else if(note_on[t].note<132){
-		note_on[t].realnote[2]='9';
+	else if(note[t].note<132){
+		note[t].realnote[2]='9';
 	}
 }
 
@@ -402,24 +539,52 @@ void play(){
 		while(fgets (read, 31, file)!=NULL){
 			token=strtok(read," ");
 			token=strtok(NULL," ");
-			if(strcmp(token,note_on[q].realnote)==0){
+			if(strcmp(token,note[q].realnote)==0){
 				token=strtok(NULL," ");
-				sscanf(token, "%f", &note_on[q].frequency);
+				sscanf(token, "%f", &note[q].frequency);
 				break; 
 			}
 		}
 		fclose(file);
 	}
-
-    beep(0,important.time_0/important.s_per_t);
+    for (int i = 0; i < important.count; i++)
+    {
+        printf("%X  %.2f   %d\n",note[i].channel,note[i].frequency,note[i].deltatime);
+    }
+    int channel,sum,set;
+    //printf("sss");
+    //printf("Enter a channel to play notes:\n");
+    //scanf("%d",&channel);
+    //printf("%d",note[0].deltatime);
+    //beep(0,1000);
+    //printf("s");
+    for (int i = 0; i < important.count; i++)
+    {
+        //printf("s");
+        if(note[i].channel == 0x92){
+            sum=0;
+            set=i;
+            i++;
+            while(note[i].channel != 0x82 || note[i].note != note[set].note){
+                sum+=note[i].deltatime;
+                i++;
+            }
+            sum+=note[i].deltatime;
+            beep(note[set].frequency,sum*4);
+            //printf("s");
+        }
+    }
+    
+    /*beep(0,important.time_0/important.s_per_t);
 	for (int q = 0; q < important.count; q++)
 	{
 		//forelise.mid
-		printf("on  %.2f   %d\n",note_on[q].frequency,note_off[q].deltatime/important.s_per_t);
-		beep(note_on[q].frequency,note_off[q].deltatime/important.s_per_t*1.7);
-        printf("off %.2f   %d\n",note_on[q].frequency,note_on[q+1].deltatime/important.s_per_t);
-		beep(0,note_on[q+1].deltatime/important.s_per_t);
+		printf("on  %.2f   %d\n",note[q].frequency,note[q].deltatime/important.s_per_t);
+		beep(note[q].frequency,note[q].deltatime/important.s_per_t*1.65);
+        printf("off %.2f   %d\n",note[q].frequency,note[q+1].deltatime/important.s_per_t);
+		beep(0,note[q+1].deltatime/important.s_per_t);
         //printf("kggj");
+        //printf("\n%d\n",q);
 	}
-    	printf("\n**end of track**\n");
+    printf("\n**end of track**\n");*/
 }
